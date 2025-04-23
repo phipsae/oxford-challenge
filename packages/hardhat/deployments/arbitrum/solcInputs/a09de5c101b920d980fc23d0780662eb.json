@@ -1,0 +1,42 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "@openzeppelin/contracts/access/Ownable.sol": {
+      "content": "// SPDX-License-Identifier: MIT\n// OpenZeppelin Contracts (last updated v5.0.0) (access/Ownable.sol)\n\npragma solidity ^0.8.20;\n\nimport {Context} from \"../utils/Context.sol\";\n\n/**\n * @dev Contract module which provides a basic access control mechanism, where\n * there is an account (an owner) that can be granted exclusive access to\n * specific functions.\n *\n * The initial owner is set to the address provided by the deployer. This can\n * later be changed with {transferOwnership}.\n *\n * This module is used through inheritance. It will make available the modifier\n * `onlyOwner`, which can be applied to your functions to restrict their use to\n * the owner.\n */\nabstract contract Ownable is Context {\n    address private _owner;\n\n    /**\n     * @dev The caller account is not authorized to perform an operation.\n     */\n    error OwnableUnauthorizedAccount(address account);\n\n    /**\n     * @dev The owner is not a valid owner account. (eg. `address(0)`)\n     */\n    error OwnableInvalidOwner(address owner);\n\n    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\n\n    /**\n     * @dev Initializes the contract setting the address provided by the deployer as the initial owner.\n     */\n    constructor(address initialOwner) {\n        if (initialOwner == address(0)) {\n            revert OwnableInvalidOwner(address(0));\n        }\n        _transferOwnership(initialOwner);\n    }\n\n    /**\n     * @dev Throws if called by any account other than the owner.\n     */\n    modifier onlyOwner() {\n        _checkOwner();\n        _;\n    }\n\n    /**\n     * @dev Returns the address of the current owner.\n     */\n    function owner() public view virtual returns (address) {\n        return _owner;\n    }\n\n    /**\n     * @dev Throws if the sender is not the owner.\n     */\n    function _checkOwner() internal view virtual {\n        if (owner() != _msgSender()) {\n            revert OwnableUnauthorizedAccount(_msgSender());\n        }\n    }\n\n    /**\n     * @dev Leaves the contract without owner. It will not be possible to call\n     * `onlyOwner` functions. Can only be called by the current owner.\n     *\n     * NOTE: Renouncing ownership will leave the contract without an owner,\n     * thereby disabling any functionality that is only available to the owner.\n     */\n    function renounceOwnership() public virtual onlyOwner {\n        _transferOwnership(address(0));\n    }\n\n    /**\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\n     * Can only be called by the current owner.\n     */\n    function transferOwnership(address newOwner) public virtual onlyOwner {\n        if (newOwner == address(0)) {\n            revert OwnableInvalidOwner(address(0));\n        }\n        _transferOwnership(newOwner);\n    }\n\n    /**\n     * @dev Transfers ownership of the contract to a new account (`newOwner`).\n     * Internal function without access restriction.\n     */\n    function _transferOwnership(address newOwner) internal virtual {\n        address oldOwner = _owner;\n        _owner = newOwner;\n        emit OwnershipTransferred(oldOwner, newOwner);\n    }\n}\n"
+    },
+    "@openzeppelin/contracts/utils/Context.sol": {
+      "content": "// SPDX-License-Identifier: MIT\n// OpenZeppelin Contracts (last updated v5.0.1) (utils/Context.sol)\n\npragma solidity ^0.8.20;\n\n/**\n * @dev Provides information about the current execution context, including the\n * sender of the transaction and its data. While these are generally available\n * via msg.sender and msg.data, they should not be accessed in such a direct\n * manner, since when dealing with meta-transactions the account sending and\n * paying for execution may not be the actual sender (as far as an application\n * is concerned).\n *\n * This contract is only required for intermediate, library-like contracts.\n */\nabstract contract Context {\n    function _msgSender() internal view virtual returns (address) {\n        return msg.sender;\n    }\n\n    function _msgData() internal view virtual returns (bytes calldata) {\n        return msg.data;\n    }\n\n    function _contextSuffixLength() internal view virtual returns (uint256) {\n        return 0;\n    }\n}\n"
+    },
+    "contracts/BatchRegistry.sol": {
+      "content": "//SPDX-License-Identifier: MIT\npragma solidity >=0.8.0 <0.9.0;\n\nimport \"@openzeppelin/contracts/access/Ownable.sol\";\n\ncontract BatchRegistry is Ownable {\n    uint256 constant CHECK_IN_REWARD = 0.015 ether;\n\n    string public s_batchName;\n    mapping(address => bool) public s_allowList;\n    mapping(address => address) public s_yourContractAddress;\n    bool public s_isOpen = true;\n    uint256 public s_checkedInCounter;\n\n    event CheckedIn(bool first, address builder, address checkInContract);\n\n    // Errors\n    error BatchNotOpen();\n    error NotAContract();\n    error NotInAllowList();\n\n    modifier batchIsOpen() {\n        if (!s_isOpen) revert BatchNotOpen();\n        _;\n    }\n\n    modifier senderIsContract() {\n        if (tx.origin == msg.sender) revert NotAContract();\n        _;\n    }\n\n    constructor(address initialOwner, string memory batchName) Ownable(initialOwner) {\n        s_batchName = batchName;\n    }\n\n    function updateAllowList(address[] calldata builders, bool[] calldata statuses) public onlyOwner {\n        require(builders.length == statuses.length, \"Builders and statuses length mismatch\");\n\n        for (uint256 i = 0; i < builders.length; i++) {\n            s_allowList[builders[i]] = statuses[i];\n        }\n    }\n\n    function toggleBatchOpenStatus() public onlyOwner {\n        s_isOpen = !s_isOpen;\n    }\n\n    function checkIn() public senderIsContract batchIsOpen {\n        if (!s_allowList[tx.origin]) revert NotInAllowList();\n\n        bool wasFirstTime;\n        if (s_yourContractAddress[tx.origin] == address(0)) {\n            s_checkedInCounter++;\n            wasFirstTime = true;\n            (bool success,) = tx.origin.call{value: CHECK_IN_REWARD}(\"\");\n            require(success, \"Failed to send check in reward\");\n        }\n\n        s_yourContractAddress[tx.origin] = msg.sender;\n        emit CheckedIn(wasFirstTime, tx.origin, msg.sender);\n    }\n\n    // Withdraw function for admins in case some builders don't end up checking in\n    function withdraw() public onlyOwner {\n        (bool success,) = payable(owner()).call{value: address(this).balance}(\"\");\n        require(success, \"Failed to withdraw\");\n    }\n\n    receive() external payable {}\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "evmVersion": "paris",
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}
