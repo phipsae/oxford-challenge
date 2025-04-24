@@ -3,7 +3,7 @@ import { DeployFunction } from "hardhat-deploy/types";
 import { Contract } from "ethers";
 
 // Update with your Batch number
-const BATCH_NAME = "University of Illinois";
+const BATCH_NAME = "Oxford University";
 
 /**
  * Deploys a contract named "deployYourContract" using the deployer account and
